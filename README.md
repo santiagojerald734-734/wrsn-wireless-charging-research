@@ -34,7 +34,6 @@ python3 code/comparison.py
 
 ## Author
 Santiago Jerald
-SRM University-AP, NIT Goa Research Internship
 
 ## Based On
 "Enhancing WRSN Sustainability Through On-Demand Directional 
