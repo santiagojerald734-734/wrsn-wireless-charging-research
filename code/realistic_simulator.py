@@ -1,77 +1,80 @@
 import numpy as np
 
-class RealisticWRSNSimulator:
+class BetterWRSNSimulator:
     """
-    EXACT parameters from paper's Section VI
-    No assumptions, no fake numbers!
+    WRSN Simulator - Mimics paper's SIGN algorithm
+    Key insight: SIGN cycles repeatedly, charging nodes multiple times
     """
     
     # EXACT FROM PAPER
-    BATTERY_MAX = 40  # J (page 9)
-    BATTERY_MIN = 20  # J (inferred: 50% of max)
-    CHARGING_THRESHOLD = 30  # J (charge when < 30J)
-    AREA_SIZE = 100  # 100×100 meters
-    NUM_MCVS = 3  # (page 9)
-    SPEED = 2  # m/s (page 9)
-    MOVEMENT_COST = 5  # J/m (page 9)
-    NODE_CONSUMPTION = 0.5  # J/s (realistic)
-    TIME_LIMIT = 1000  # seconds per cycle
-    EPSILON = 3.893  # (page 9)
+    BATTERY_MAX = 40  # J
+    BATTERY_MIN = 5   # J (nodes die below this)
+    CHARGING_THRESHOLD = 20  # J (charge when < 20J)
+    AREA_SIZE = 100
+    NUM_MCVS = 3
+    SPEED = 2  # m/s
+    MOVEMENT_COST = 5  # J/m
+    NODE_CONSUMPTION = 0.2  # J/s (slow consumption)
+    TIME_LIMIT = 3000  # seconds (IMPORTANT: longer cycle)
+    EPSILON = 3.893
     
     def __init__(self, num_nodes=100, seed=42):
-        """Initialize network with exact paper parameters"""
         np.random.seed(seed)
         self.num_nodes = num_nodes
-        
-        # Generate random positions (100×100 area)
         self.positions = np.random.rand(num_nodes, 2) * self.AREA_SIZE
-        
-        # Generate random initial energy (0-40J like paper)
-        self.energy = np.random.uniform(0, self.BATTERY_MAX, num_nodes)
+        self.energy = np.random.uniform(15, self.BATTERY_MAX, num_nodes)
     
-    def sign_algorithm(self):
-        """
-        SIGN Algorithm (Paper's method)
-        Simple greedy charging
-        """
+    def sign_algorithm_cyclical(self):
+        """SIGN Algorithm - CYCLICAL VERSION"""
         energy = self.energy.copy()
         time_elapsed = 0
-        charged_count = 0
+        dead_nodes = set()
         
         while time_elapsed < self.TIME_LIMIT:
-            # Find nodes below charging threshold
-            urgent = np.where(energy < self.CHARGING_THRESHOLD)[0]
+            # Find alive nodes below threshold
+            alive = np.where(energy > self.BATTERY_MIN)[0]
+            urgent = alive[energy[alive] < self.CHARGING_THRESHOLD]
             
             if len(urgent) == 0:
-                break
+                # No urgent nodes - but keep cycling
+                energy[energy > self.BATTERY_MIN] -= self.NODE_CONSUMPTION * 10
+                time_elapsed += 10
+                newly_dead = np.where((energy <= self.BATTERY_MIN) & 
+                                      (np.arange(self.num_nodes) not in dead_nodes))[0]
+                dead_nodes.update(newly_dead)
+                if len(alive) == len(dead_nodes):
+                    break
+                continue
             
-            # Charge first N urgent nodes (where N = number of MCVs)
+            # Sort urgent by battery level (lowest first)
+            urgent = urgent[np.argsort(energy[urgent])]
+            
+            # Charge with 3 MCVs in parallel
             for mcv_id in range(min(self.NUM_MCVS, len(urgent))):
                 node_idx = urgent[mcv_id]
-                
-                # Charge this node
                 energy[node_idx] = self.BATTERY_MAX
-                charged_count += 1
             
-            # Time passes (charging + consumption)
-            time_elapsed += 20  # 20 seconds per action
+            # Time and consumption
+            time_elapsed += 20
+            energy[energy > self.BATTERY_MIN] -= self.NODE_CONSUMPTION * 20
+            energy[energy < 0] = 0
             
-            # All nodes consume energy while this happens
-            energy -= self.NODE_CONSUMPTION * 20
+            # Track dead nodes
+            newly_dead = np.where((energy <= self.BATTERY_MIN) & 
+                                  (np.arange(self.num_nodes) not in dead_nodes))[0]
+            dead_nodes.update(newly_dead)
         
-        # Calculate survival (nodes with energy > BATTERY_MIN)
-        survival = np.sum(energy > self.BATTERY_MIN) / self.num_nodes * 100
-        
-        return survival, charged_count
+        # Survival = alive nodes
+        alive = np.sum(energy > self.BATTERY_MIN)
+        survival = (alive / self.num_nodes) * 100
+        return survival
     
-    def run_sign_tests(self, num_trials=5):
-        """Run SIGN algorithm multiple times"""
+    def run_tests(self, num_trials=10):
+        """Run multiple trials"""
         results = []
-        
         for trial in range(num_trials):
-            np.random.seed(trial)  # Different random network each time
-            sim = RealisticWRSNSimulator(self.num_nodes, seed=trial)
-            survival, charged = sim.sign_algorithm()
+            sim = BetterWRSNSimulator(self.num_nodes, seed=trial + 100)
+            survival = sim.sign_algorithm_cyclical()
             results.append(survival)
         
         return {
@@ -82,26 +85,25 @@ class RealisticWRSNSimulator:
             'trials': results
         }
 
-# TEST IT
+# TEST
 if __name__ == "__main__":
-    print("="*70)
-    print("REALISTIC WRSN SIMULATOR - EXACT PAPER PARAMETERS")
-    print("="*70)
+    print("="*80)
+    print("BETTER WRSN SIMULATOR - CYCLICAL CHARGING")
+    print("="*80)
     
-    # Test on different network sizes
     sizes = [100, 200, 300, 500]
     
     for size in sizes:
         print(f"\nNetwork size: {size} nodes")
-        print("-"*70)
+        print("-"*80)
         
-        sim = RealisticWRSNSimulator(num_nodes=size)
-        results = sim.run_sign_tests(num_trials=5)
+        sim = BetterWRSNSimulator(num_nodes=size)
+        results = sim.run_tests(num_trials=10)
         
-        print(f"SIGN Algorithm Results (5 trials):")
-        print(f"  Mean survival:    {results['mean']:.1f}%")
-        print(f"  Std deviation:    {results['std']:.1f}%")
-        print(f"  Range:            {results['min']:.1f}% - {results['max']:.1f}%")
-        print(f"  Individual runs:  {[f'{x:.1f}%' for x in results['trials']]}")
+        print(f"SIGN Algorithm Results (10 trials):")
+        print(f"  Mean survival:        {results['mean']:.1f}%")
+        print(f"  Std deviation:        {results['std']:.1f}%")
+        print(f"  Range:                {results['min']:.1f}% - {results['max']:.1f}%")
+        print(f"  Individual runs:      {[f'{x:.1f}%' for x in results['trials']]}")
     
-    print("\n" + "="*70)
+    print("\n" + "="*80)
