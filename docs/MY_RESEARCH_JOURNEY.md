@@ -1,6 +1,6 @@
-# MY WRSN RESEARCH JOURNEY
+# Implementation Plan
 
-## WHAT IS MY RESEARCH?
+## WHAT IS MY RESEARCH ABOUT?
 
 I'm improving wireless sensor network charging by combining 
 4 different optimization techniques.
